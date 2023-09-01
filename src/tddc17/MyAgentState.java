@@ -7,6 +7,7 @@ import aima.core.agent.Percept;
 import aima.core.agent.impl.*;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Random;
 
 class MyAgentState
@@ -31,79 +32,195 @@ class MyAgentState
         @Override
         public boolean equals(Object other) {
             if (other instanceof Pos) {
-                Pos o  = (Pos)other;
+                Pos o = (Pos)other;
                 return o.x == x && o.y == y;
             }
             return false;
         }
+
         public Pos(int x, int y) {
             this.x = x;
             this.y = y;
         }
+
+        public Pos top() {
+            return new Pos(x, y - 1);
+        }
+
+        public Pos bottom() {
+            return new Pos(x, y + 1);
+        }
+
+        public Pos left() {
+            return new Pos(x - 1, y);
+        }
+
+        public Pos right() {
+            return new Pos(x + 1, y);
+        }
+
+        public boolean isNeighbour(Pos other) {
+            return Math.abs(x - other.x) + Math.abs(y - other.y) == 1;
+        }
     }
+
     public static  class Move {
       public Pos from;
       public Pos to;
 
-      public Move(Pos From , Pos To ){
-          from= From;
-          to=To;
+      public Move(Pos from , Pos to){
+          this.from = new Pos(from.x, from.y);
+          this.to = new Pos(to.x, to.y);
       }
+      // get move direction
       public int getDir() {
-        // TODO
-        return 0;
+        if (from.x < to.x) return EAST;
+        if (from.x > to.x) return WEST;
+        if (from.y < to.y) return SOUTH;
+        if (from.y > to.y) return NORTH;
+        return -1;
       }
     }
 
+    // returns the backtracking direction
     public int backtrack() {
-        // check last pos in path and return direction to it
-        return -1;
+        if (pathFromStart.size() <= 1) return 0;
+        Pos nextPos = pathFromStart.get(pathFromStart.size() - 2);
+        lastPos = pos;
+        pos = nextPos;
+        return (new Move(lastPos, pos)).getDir();
     }
 
-    public List<Move> toExplore;
-    public List<Pos> explored;
-    public List<Pos> pathFromStart;
+    // init the path and exploration lists with the starting space.
+    public void init() {
+        pathFromStart.add(pos);
+        explored.add(pos);
+        addExplore();
+    }
 
+    public List<Move> toExplore = new ArrayList<>();
+    public List<Pos> explored = new ArrayList<>();
+    public List<Pos> pathFromStart = new ArrayList<>();
+
+    // updates the pathFromStart list
+    public void updatePath() {
+        // if we didn't move, do nothing.
+        if (pathFromStart.size() > 0 && pos.equals(pathFromStart.get(pathFromStart.size() - 1))) return;
+        // if we went back, pop from the path.
+        if (pathFromStart.size() > 1 && pos.equals(pathFromStart.get(pathFromStart.size() - 2))) {
+            pathFromStart.remove(pathFromStart.size() - 1);
+            return;
+        }
+        // otherwise, append to the path.
+        pathFromStart.add(pos);
+    }
+
+    // for backtrack state. if non null, we will backtrack
     public Pos backtrackTo = null;
 
+    // for movement state
     public boolean needsToFinishMovement = false;
     public int nextAlignment = -1;
 
-    public void addExplore() {
-        Pos top = new Pos(agent_x_position, agent_y_position - 1);
-        Pos bottom = new Pos(agent_x_position, agent_y_position + 1);
-        Pos left = new Pos(agent_x_position - 1, agent_y_position);
-        Pos right = new Pos(agent_x_position + 1, agent_y_position);
-        if (!toExplore.contains(top) && !explored.contains(top)) {
-            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), top));
+    // adds a move to the toExplore list
+    public void toExploreSet(Pos from, Pos to) {
+        // we need to check if a move to this space already exists.
+        int i = toExplore.size() - 1;
+        while (i >= 0) {
+            if (toExplore.get(i).to.equals(to)) break;
+            i--;
         }
-        if (!toExplore.contains(bottom) && !explored.contains(bottom)) {
-            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), bottom));
-        }
-        if (!toExplore.contains(left) && !explored.contains(left)) {
-            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), left));
-        }
-        if (!toExplore.contains(right) && !explored.contains(right)) {
-            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), right));
+        if (i < 0) {
+            // if it doesn't, just add the move
+            System.out.println("add " + to.x + " " + to.y + " to explore list");
+            toExplore.add(new Move(pos, to));
+        } else {
+            // if it does, replace the existing move. (for less backtracking)
+            toExplore.remove(i);
+            toExplore.add(new Move(pos, to));
+            System.out.println("update movepos for exploration of " + to.x + " " + to.y);
         }
     }
-    public int explore () {
-        // peek top of stack
-        // if empty just backtrack to start.
-        Pos from = toExplore.get(toExplore.size() - 1).from;
-        if (from.x != agent_x_position || from.y != agent_y_position) {
-            backtrackTo= from;
-            return -1;
+
+    // add adjacent spaces to the toExplore list
+    public void addExplore() {
+        if (!explored.contains(pos.top())) {
+            toExploreSet(pos, pos.top());
         }
+        if (!explored.contains(pos.left())) {
+            toExploreSet(pos, pos.left());
+        }
+        if (!explored.contains(pos.bottom())) {
+            toExploreSet(pos, pos.bottom());
+        }
+        if (!explored.contains(pos.right())) {
+            toExploreSet(pos, pos.right());
+        }
+    }
+
+    // Will look for possible shortcuts in the backtrack path
+    // Basically if a space in the path is neighbour with another space
+    // further in the path, just remove the spaces in between from the path.
+    public void optimizeBacktrack() {
+        int ito = pathFromStart.indexOf(backtrackTo);
+        int b = 0;
+        int B = pathFromStart.size() - 1 - b;
+        System.out.print("Before: [ ");
+        for (var p : pathFromStart) {
+            System.out.print(p.x + "," + p.y + " ");
+        }
+        System.out.println("]");
+        while (B > ito) {
+            int skipN = 0;
+            int skipFrom = -1;
+            for (int i = B - 2; i >= ito; i--) {
+                if (pathFromStart.get(i).isNeighbour(pathFromStart.get(B))) {
+                    skipFrom = i + 1;
+                    skipN = B - skipFrom;
+                }
+            }
+            while (skipN > 0) {
+                pathFromStart.remove(skipFrom);
+                skipN--;
+            }
+            b++;
+            B = pathFromStart.size() - 1 - b;
+        }
+        System.out.print("After: [ ");
+        for (var p : pathFromStart) {
+            System.out.print(p.x + "," + p.y + " ");
+        }
+        System.out.println("]");
+    }
+
+    // returns the next direction to go (or -1 if we're done)
+    public int explore () {
+        // if we don't have anything to explore, we still have to backtrack to the start.
+        if (toExplore.size() == 0) {
+            if (pathFromStart.size() == 1) return -1;
+            backtrackTo = pathFromStart.get(0);
+            optimizeBacktrack();
+            return backtrack();
+        }
+        // peek top of stack
         Move nextMove = toExplore.get(toExplore.size() - 1);
+        // if we can't access it, backtrack to the last spot where it could be accessed from
+        if (!nextMove.from.equals(pos)) {
+            backtrackTo = nextMove.from;
+            optimizeBacktrack();
+            return backtrack();
+        }
+        // else pop the move and explore the space
         toExplore.remove(nextMove);
         explored.add(nextMove.to);
+        lastPos = pos;
+        pos = nextMove.to;
         return nextMove.getDir();
     }
 
+    public Pos pos = new Pos(1, 1);
+    public Pos lastPos = new Pos(1, 1);
 
-    public int agent_x_position = 1;
-    public int agent_y_position = 1;
     public int agent_last_action = ACTION_NONE;
 
     public static final int NORTH = 0;
@@ -129,16 +246,16 @@ class MyAgentState
         {
             switch (agent_direction) {
                 case MyAgentState.NORTH:
-                    agent_y_position--;
+                    pos.y--;
                     break;
                 case MyAgentState.EAST:
-                    agent_x_position++;
+                    pos.x++;
                     break;
                 case MyAgentState.SOUTH:
-                    agent_y_position++;
+                    pos.y++;
                     break;
                 case MyAgentState.WEST:
-                    agent_x_position--;
+                    pos.x--;
                     break;
             }
         }
@@ -178,8 +295,31 @@ class MyAgentProgram implements AgentProgram {
     private Random random_generator = new Random();
 
     // Here you can define your variables!
-    public int iterationCounter = 100;
+    public int iterationCounter = 200;
     public MyAgentState state = new MyAgentState();
+
+    // gets the turn action depending on the current and target direction
+    private Action getTurn(int cur, int next) {
+        if (cur > next) {
+            if (next == 0 && cur == 3) { // wrap around case
+                state.agent_direction = 0;
+                return LIUVacuumEnvironment.ACTION_TURN_RIGHT;
+            } else {
+                state.agent_direction--;
+                return LIUVacuumEnvironment.ACTION_TURN_LEFT;
+            }
+        } else if (cur < next) {
+            if (cur == 0 && next == 3) { // wrap around case
+                state.agent_direction = 3;
+                return LIUVacuumEnvironment.ACTION_TURN_LEFT;
+            } else {
+                state.agent_direction++;
+                return LIUVacuumEnvironment.ACTION_TURN_RIGHT;
+            }
+        } else {
+            return LIUVacuumEnvironment.ACTION_SUCK;
+        }
+    }
 
     // moves the Agent to a random start position
     // uses percepts to update the Agent position - only the position, other percepts are ignored
@@ -221,21 +361,27 @@ class MyAgentProgram implements AgentProgram {
 
         // This example agent program will update the internal agent state while only moving forward.
         // START HERE - code below should be modified!
+        
+        // Init the state on first action
+        if (initnialRandomActions == -1) {
+            initnialRandomActions--;
+            state.init();
+        }
 
-        System.out.println("x=" + state.agent_x_position);
-        System.out.println("y=" + state.agent_y_position);
+        System.out.println("x=" + state.pos.x);
+        System.out.println("y=" + state.pos.y);
         System.out.println("dir=" + state.agent_direction);
-
 
         iterationCounter--;
 
         if (iterationCounter==0)
             return NoOpAction.NO_OP;
 
+        // If in movement state, turn until in right direction, then move forward
         if (state.needsToFinishMovement) {
+            System.out.println("In movement in dir " + state.nextAlignment);
             if (state.agent_direction != state.nextAlignment) {
-                // TODO turn accordingly
-                return NoOpAction.NO_OP;
+                return getTurn(state.agent_direction, state.nextAlignment);
             } else {
                 state.needsToFinishMovement = false;
                 return LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
@@ -248,35 +394,44 @@ class MyAgentProgram implements AgentProgram {
         Boolean home = (Boolean)p.getAttribute("home");
         System.out.println("percept: " + p);
 
+        // If we bumped, reset to last position, else add neighbours to the toExplore list.
+        if (bump) {
+            state.pos = state.lastPos;
+        } else if (state.backtrackTo == null) {
+            state.addExplore();
+        }
+
+        state.updatePath();
+
+        // If we are on dirt, immediately suck without asking questions
         if (dirt) {
             state.agent_last_action=state.ACTION_SUCK;
             return LIUVacuumEnvironment.ACTION_SUCK;
         }
 
-        if (state.backtrackTo != null) {
-            if (state.agent_x_position == state.backtrackTo.x && state.agent_y_position == state.backtrackTo.y) {
-                state.backtrackTo = null;
-            } else {
-                int nextDir = state.backtrack();
-                // same as explore
-                return NoOpAction.NO_OP;
-            }
+        // Get next direction depending on exploration or backtracking
+        int nextDir;
+        if (state.backtrackTo == null) {
+            nextDir = state.explore();
+        } else if (state.pos.equals(state.backtrackTo)) {
+            // if we stopped backtracking, go back to exploring
+            state.backtrackTo = null;
+            nextDir = state.explore();
+        } else {
+            nextDir = state.backtrack();
         }
 
-        int nextDir = state.explore();
-        if (nextDir == -1) {
-            int nextDir2 = state.backtrack();
-            // same as explore
-            return NoOpAction.NO_OP;
-        }
+        // state.explore() returns -1 if we are done exploring
+        if (nextDir == -1) return NoOpAction.NO_OP;
+
         state.nextAlignment = nextDir;
-        if (state.agent_direction != nextDir) {
-            state.needsToFinishMovement = true;
-            // TODO turn accordingly
-            return NoOpAction.NO_OP;
-        }
 
-        return LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
+        // either move if we are aligned correctly, or go into movement state if we need to turn
+        if (state.agent_direction == nextDir)
+            return LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
+
+        state.needsToFinishMovement = true;
+        return getTurn(state.agent_direction, state.nextAlignment);
     }
 }
 

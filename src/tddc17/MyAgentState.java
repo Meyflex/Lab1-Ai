@@ -6,6 +6,7 @@ import aima.core.agent.AgentProgram;
 import aima.core.agent.Percept;
 import aima.core.agent.impl.*;
 
+import java.util.List;
 import java.util.Random;
 
 class MyAgentState
@@ -22,6 +23,84 @@ class MyAgentState
     final int ACTION_TURN_RIGHT 	= 2;
     final int ACTION_TURN_LEFT 		= 3;
     final int ACTION_SUCK	 		= 4;
+
+    public static class Pos {
+        public int x;
+        public int y;
+
+        @Override
+        public boolean equals(Object other) {
+            if (other instanceof Pos) {
+                Pos o  = (Pos)other;
+                return o.x == x && o.y == y;
+            }
+            return false;
+        }
+        public Pos(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+    }
+    public static  class Move {
+      public Pos from;
+      public Pos to;
+
+      public Move(Pos From , Pos To ){
+          from= From;
+          to=To;
+      }
+      public int getDir() {
+        // TODO
+        return 0;
+      }
+    }
+
+    public int backtrack() {
+        // check last pos in path and return direction to it
+        return -1;
+    }
+
+    public List<Move> toExplore;
+    public List<Pos> explored;
+    public List<Pos> pathFromStart;
+
+    public Pos backtrackTo = null;
+
+    public boolean needsToFinishMovement = false;
+    public int nextAlignment = -1;
+
+    public void addExplore() {
+        Pos top = new Pos(agent_x_position, agent_y_position - 1);
+        Pos bottom = new Pos(agent_x_position, agent_y_position + 1);
+        Pos left = new Pos(agent_x_position - 1, agent_y_position);
+        Pos right = new Pos(agent_x_position + 1, agent_y_position);
+        if (!toExplore.contains(top) && !explored.contains(top)) {
+            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), top));
+        }
+        if (!toExplore.contains(bottom) && !explored.contains(bottom)) {
+            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), bottom));
+        }
+        if (!toExplore.contains(left) && !explored.contains(left)) {
+            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), left));
+        }
+        if (!toExplore.contains(right) && !explored.contains(right)) {
+            toExplore.add(new Move(new Pos(agent_x_position, agent_y_position), right));
+        }
+    }
+    public int explore () {
+        // peek top of stack
+        // if empty just backtrack to start.
+        Pos from = toExplore.get(toExplore.size() - 1).from;
+        if (from.x != agent_x_position || from.y != agent_y_position) {
+            backtrackTo= from;
+            return -1;
+        }
+        Move nextMove = toExplore.get(toExplore.size() - 1);
+        toExplore.remove(nextMove);
+        explored.add(nextMove.to);
+        return nextMove.getDir();
+    }
+
 
     public int agent_x_position = 1;
     public int agent_y_position = 1;
@@ -99,7 +178,7 @@ class MyAgentProgram implements AgentProgram {
     private Random random_generator = new Random();
 
     // Here you can define your variables!
-    public int iterationCounter = 10;
+    public int iterationCounter = 100;
     public MyAgentState state = new MyAgentState();
 
     // moves the Agent to a random start position
@@ -153,58 +232,51 @@ class MyAgentProgram implements AgentProgram {
         if (iterationCounter==0)
             return NoOpAction.NO_OP;
 
+        if (state.needsToFinishMovement) {
+            if (state.agent_direction != state.nextAlignment) {
+                // TODO turn accordingly
+                return NoOpAction.NO_OP;
+            } else {
+                state.needsToFinishMovement = false;
+                return LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
+            }
+        }
+
         DynamicPercept p = (DynamicPercept) percept;
         Boolean bump = (Boolean)p.getAttribute("bump");
         Boolean dirt = (Boolean)p.getAttribute("dirt");
         Boolean home = (Boolean)p.getAttribute("home");
         System.out.println("percept: " + p);
 
-        // State update based on the percept value and the last action
-        state.updatePosition((DynamicPercept)percept);
-        if (bump) {
-            switch (state.agent_direction) {
-                case MyAgentState.NORTH:
-                    state.updateWorld(state.agent_x_position,state.agent_y_position-1,state.WALL);
-                    break;
-                case MyAgentState.EAST:
-                    state.updateWorld(state.agent_x_position+1,state.agent_y_position,state.WALL);
-                    break;
-                case MyAgentState.SOUTH:
-                    state.updateWorld(state.agent_x_position,state.agent_y_position+1,state.WALL);
-                    break;
-                case MyAgentState.WEST:
-                    state.updateWorld(state.agent_x_position-1,state.agent_y_position,state.WALL);
-                    break;
-            }
-        }
-        if (dirt)
-            state.updateWorld(state.agent_x_position,state.agent_y_position,state.DIRT);
-        else
-            state.updateWorld(state.agent_x_position,state.agent_y_position,state.CLEAR);
-
-        state.printWorldDebug();
-
-
-        // Next action selection based on the percept value
-        if (dirt)
-        {
-            System.out.println("DIRT -> choosing SUCK action!");
+        if (dirt) {
             state.agent_last_action=state.ACTION_SUCK;
             return LIUVacuumEnvironment.ACTION_SUCK;
         }
-        else
-        {
-            if (bump)
-            {
-                state.agent_last_action=state.ACTION_NONE;
+
+        if (state.backtrackTo != null) {
+            if (state.agent_x_position == state.backtrackTo.x && state.agent_y_position == state.backtrackTo.y) {
+                state.backtrackTo = null;
+            } else {
+                int nextDir = state.backtrack();
+                // same as explore
                 return NoOpAction.NO_OP;
             }
-            else
-            {
-                state.agent_last_action=state.ACTION_MOVE_FORWARD;
-                return LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
-            }
         }
+
+        int nextDir = state.explore();
+        if (nextDir == -1) {
+            int nextDir2 = state.backtrack();
+            // same as explore
+            return NoOpAction.NO_OP;
+        }
+        state.nextAlignment = nextDir;
+        if (state.agent_direction != nextDir) {
+            state.needsToFinishMovement = true;
+            // TODO turn accordingly
+            return NoOpAction.NO_OP;
+        }
+
+        return LIUVacuumEnvironment.ACTION_MOVE_FORWARD;
     }
 }
 

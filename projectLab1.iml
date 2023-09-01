@@ -10,7 +10,7 @@
     <orderEntry type="module-library" exported="">
       <library>
         <CLASSES>
-          <root url="jar://X:/Downloads/aima-core.jar!/" />
+          <root url="jar://$USER_HOME$/Downloads/aima-core.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES />
@@ -19,7 +19,7 @@
     <orderEntry type="module-library" exported="">
       <library>
         <CLASSES>
-          <root url="jar://X:/Downloads/aima-gui.jar!/" />
+          <root url="jar://$USER_HOME$/Downloads/aima-gui.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES />

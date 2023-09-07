@@ -93,8 +93,9 @@ class MyAgentState
 
     // init the path and exploration lists with the starting space.
     public void init() {
-        pathFromStart.add(pos);
-        explored.add(pos);
+        if (pathFromStart.isEmpty() || !pathFromStart.get(pathFromStart.size() - 1).equals(pos))
+            pathFromStart.add(new MyAgentState.Pos(pos.x, pos.y));
+        explored.add(new MyAgentState.Pos(pos.x, pos.y));
         addExplore();
     }
 
@@ -112,7 +113,7 @@ class MyAgentState
             return;
         }
         // otherwise, append to the path.
-        pathFromStart.add(pos);
+        pathFromStart.add(new MyAgentState.Pos(pos.x, pos.y));
     }
 
     // for backtrack state. if non null, we will backtrack
@@ -132,13 +133,11 @@ class MyAgentState
         }
         if (i < 0) {
             // if it doesn't, just add the move
-            System.out.println("add " + to.x + " " + to.y + " to explore list");
             toExplore.add(new Move(pos, to));
         } else {
             // if it does, replace the existing move. (for less backtracking)
             toExplore.remove(i);
             toExplore.add(new Move(pos, to));
-            System.out.println("update movepos for exploration of " + to.x + " " + to.y);
         }
     }
 
@@ -162,14 +161,9 @@ class MyAgentState
     // Basically if a space in the path is neighbour with another space
     // further in the path, just remove the spaces in between from the path.
     public void optimizeBacktrack() {
-        int ito = pathFromStart.indexOf(backtrackTo);
+        int ito = pathFromStart.lastIndexOf(backtrackTo);
         int b = 0;
         int B = pathFromStart.size() - 1 - b;
-        System.out.print("Before: [ ");
-        for (var p : pathFromStart) {
-            System.out.print(p.x + "," + p.y + " ");
-        }
-        System.out.println("]");
         while (B > ito) {
             int skipN = 0;
             int skipFrom = -1;
@@ -186,11 +180,6 @@ class MyAgentState
             b++;
             B = pathFromStart.size() - 1 - b;
         }
-        System.out.print("After: [ ");
-        for (var p : pathFromStart) {
-            System.out.print(p.x + "," + p.y + " ");
-        }
-        System.out.println("]");
     }
 
     // returns the next direction to go (or -1 if we're done)
@@ -284,7 +273,6 @@ class MyAgentState
                 if (world[j][i]==HOME)
                     System.out.print(" H ");
             }
-            System.out.println("");
         }
     }
 }
@@ -295,7 +283,7 @@ class MyAgentProgram implements AgentProgram {
     private Random random_generator = new Random();
 
     // Here you can define your variables!
-    public int iterationCounter = 200;
+    public int iterationCounter = 4000;
     public MyAgentState state = new MyAgentState();
 
     // gets the turn action depending on the current and target direction
@@ -328,6 +316,10 @@ class MyAgentProgram implements AgentProgram {
         int action = random_generator.nextInt(6);
         initnialRandomActions--;
         state.updatePosition(percept);
+        // update path
+        if (state.pathFromStart.isEmpty() || !state.pathFromStart.get(state.pathFromStart.size() - 1).equals(state.pos)) {
+            state.pathFromStart.add(new MyAgentState.Pos(state.pos.x, state.pos.y));
+        }
         if(action==0) {
             state.agent_direction = ((state.agent_direction-1) % 4);
             if (state.agent_direction<0)
@@ -354,7 +346,9 @@ class MyAgentProgram implements AgentProgram {
             // process percept for the last step of the initial random actions
             initnialRandomActions--;
             state.updatePosition((DynamicPercept) percept);
-            System.out.println("Processing percepts after the last execution of moveToRandomStartPosition()");
+            if (state.pathFromStart.isEmpty() || !state.pathFromStart.get(state.pathFromStart.size() - 1).equals(state.pos)) {
+                state.pathFromStart.add(new MyAgentState.Pos(state.pos.x, state.pos.y));
+            }
             state.agent_last_action=state.ACTION_SUCK;
             return LIUVacuumEnvironment.ACTION_SUCK;
         }
@@ -374,12 +368,12 @@ class MyAgentProgram implements AgentProgram {
 
         iterationCounter--;
 
-        if (iterationCounter==0)
+        if (iterationCounter==0) {
             return NoOpAction.NO_OP;
+        }
 
         // If in movement state, turn until in right direction, then move forward
         if (state.needsToFinishMovement) {
-            System.out.println("In movement in dir " + state.nextAlignment);
             if (state.agent_direction != state.nextAlignment) {
                 return getTurn(state.agent_direction, state.nextAlignment);
             } else {
@@ -392,7 +386,6 @@ class MyAgentProgram implements AgentProgram {
         Boolean bump = (Boolean)p.getAttribute("bump");
         Boolean dirt = (Boolean)p.getAttribute("dirt");
         Boolean home = (Boolean)p.getAttribute("home");
-        System.out.println("percept: " + p);
 
         // If we bumped, reset to last position, else add neighbours to the toExplore list.
         if (bump) {
